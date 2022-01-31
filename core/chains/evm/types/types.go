@@ -10,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	gethTypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/pkg/errors"
-
 	"gopkg.in/guregu/null.v4"
 
 	"github.com/smartcontractkit/chainlink/core/assets"
@@ -82,6 +81,7 @@ type ChainCfg struct {
 	MinRequiredOutgoingConfirmations               null.Int
 	MinimumContractPayment                         *assets.Link
 	OCRObservationTimeout                          *models.Duration
+	NodeNoNewHeadsThreshold                        *models.Duration
 }
 
 func (c *ChainCfg) Scan(value interface{}) error {

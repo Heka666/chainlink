@@ -41,6 +41,7 @@ type EVMNodeResource struct {
 	EVMChainID utils.Big   `json:"evmChainID"`
 	WSURL      null.String `json:"wsURL"`
 	HTTPURL    null.String `json:"httpURL"`
+	State      string      `json:"state"`
 	CreatedAt  time.Time   `json:"createdAt"`
 	UpdatedAt  time.Time   `json:"updatedAt"`
 }
@@ -58,7 +59,9 @@ func NewEVMNodeResource(node evmtypes.Node) EVMNodeResource {
 		EVMChainID: node.EVMChainID,
 		WSURL:      node.WSURL,
 		HTTPURL:    node.HTTPURL,
-		CreatedAt:  node.CreatedAt,
-		UpdatedAt:  node.UpdatedAt,
+		// TODO: Make this work, probably need to get nodes from the pool instead of the DB
+		// State:      node.State().String(),
+		CreatedAt: node.CreatedAt,
+		UpdatedAt: node.UpdatedAt,
 	}
 }

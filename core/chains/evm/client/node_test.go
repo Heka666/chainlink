@@ -97,3 +97,7 @@ func Test_NodeStateTransitions(t *testing.T) {
 		assert.Equal(t, evmclient.NodeStateClosed, nValid.State())
 	})
 }
+
+func TestUnit_Node_Transitions(t *testing.T) {
+	t.Fatal("TODO")
+}
