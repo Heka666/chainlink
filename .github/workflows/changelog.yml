@@ -4,11 +4,7 @@
 #
 name: Changelog
 
-on: 
-  pull_request:
-    paths:
-      - '*/**'
-      - '!contracts/**'
+on: pull_request
 
 jobs:
   changelog:

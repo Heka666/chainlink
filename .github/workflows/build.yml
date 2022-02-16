@@ -2,15 +2,9 @@ name: 'Build Chainlink'
 
 on:
   pull_request:
-    paths:
-      - '*/**'
-      - '!contracts/**'
   push:
     branches:
       - master
-    paths:
-      - '*/**'
-      - '!contracts/**'
 
 jobs:
 

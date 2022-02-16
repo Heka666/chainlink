@@ -1,10 +1,6 @@
 name: CI Core
 
-on: 
-  push:
-    paths:
-      - '*/**'
-      - '!contracts/**'
+on: push
 
 jobs:
   core:
