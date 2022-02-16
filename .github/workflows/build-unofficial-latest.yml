@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - "develop"
-
 jobs:
   build-chainlink:
     name: Build Chainlink Image
