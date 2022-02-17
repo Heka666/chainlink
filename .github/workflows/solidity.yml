@@ -76,3 +76,5 @@ jobs:
         run: ./tools/ci/check_solc_hashes
       - name: Run tests
         run: ./tools/ci/solidity_test_hardhat
+      - name: Run prepublish NPM test
+        run: ./tools/ci/prepublish_npm_test
