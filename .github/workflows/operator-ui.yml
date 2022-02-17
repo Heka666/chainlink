@@ -9,10 +9,12 @@ on:
     paths:
       - 'operator_ui/**'
       - yarn.lock
+      - 'tools/ci/**'
   pull_request:
     paths:
       - 'operator_ui/**'
       - yarn.lock
+      - 'tools/ci/**'
 
 jobs:
   operator-ui:
