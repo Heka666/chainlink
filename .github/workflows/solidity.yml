@@ -58,7 +58,7 @@ jobs:
       - name: Run coverage
         env:
           NODE_OPTIONS: "--max-old-space-size=5120"
-        run: ./tools/ci/contracts/solidity_coverage
+        run: ./tools/ci/solidity_coverage
 
   solidity:
     name: Solidity
