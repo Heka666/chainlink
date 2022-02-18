@@ -1,0 +1,52 @@
+##
+# This workflow needs to be ran because `golangci-lint` is a required check and
+# we conditionally only run the `golangci-lint` workflow when certain paths 
+# change.
+# If the workflow does not run, the required check will never pass. This is
+# GitHub's workaround:
+# https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/defining-the-mergeability-of-pull-requests/troubleshooting-required-status-checks#example
+##
+
+name: golangci-lint
+
+on:
+  push:
+    branches:
+      - auto
+      - try
+      - rollup
+    paths-ignore:
+      - '**.go'
+  pull_request:
+    paths-ignore:
+      - '**.go'
+
+jobs:
+  golangci:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v2
+        with:
+          # Optional: version of golangci-lint to use in form of v1.2 or v1.2.3 or `latest` to use the latest version
+          version: v1.43.0
+
+          # Optional: working directory, useful for monorepos
+          # working-directory: somedir
+
+          # Optional: golangci-lint command line arguments.
+          args: --timeout=5m0s --tests=false
+
+          # Optional: show only new issues if it's a pull request. The default value is `false`.
+          only-new-issues: true
+
+          # Optional: if set to true then the action will use pre-installed Go.
+          # skip-go-installation: true
+
+          # Optional: if set to true then the action don't cache or restore ~/go/pkg.
+          # skip-pkg-cache: true
+
+          # Optional: if set to true then the action don't cache or restore ~/.cache/go-build.
+          # skip-build-cache: true
