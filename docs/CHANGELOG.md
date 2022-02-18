@@ -42,6 +42,12 @@ contractID      = "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
 chainID	        = 4
 ```
 
+#### EVM node hot failover and liveness checking
+
+Chainlink now supports hot failover and liveness checking for EVM nodes. This completely supercedes and replaces the Fiews failover proxy and should remove the need for any kind of failover proxy between Chainlink and its RPC nodes.
+
+In order to use this feature, you'll need to set multiple primary RPC nodes.
+
 ### Removed
 
 - `deleteuser` CLI command.

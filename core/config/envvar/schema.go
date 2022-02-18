@@ -129,7 +129,7 @@ type ConfigSchema struct {
 	MinIncomingConfirmations          uint32        `env:"MIN_INCOMING_CONFIRMATIONS"`
 	MinRequiredOutgoingConfirmations  uint64        `env:"MIN_OUTGOING_CONFIRMATIONS"`
 	MinimumContractPayment            assets.Link   `env:"MINIMUM_CONTRACT_PAYMENT_LINK_JUELS"`
-	// Node configuration
+	// Node liveness checking
 	NodeNoNewHeadsThreshold  time.Duration `env:"NODE_NO_NEW_HEADS_THRESHOLD"`
 	NodePollFailureThreshold uint32        `env:"NODE_POLL_FAILURE_THRESHOLD"`
 	NodePollInterval         time.Duration `env:"NODE_POLL_INTERVAL"`

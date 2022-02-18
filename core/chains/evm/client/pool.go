@@ -12,10 +12,25 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
 	"github.com/smartcontractkit/chainlink/core/logger"
 	"github.com/smartcontractkit/chainlink/core/utils"
+)
+
+// TODO: Prometheus metrics
+var (
+	promNumNodesAlive = promauto.NewGaugeVec(prometheus.GaugeOpts{})
+	promNumNodesDead  = promauto.NewGaugeVec(prometheus.GaugeOpts{})
+	promNumNodeTotal  = promauto.NewGaugeVec(prometheus.GaugeOpts{})
+
+	promNumNodesDialed         = promauto.NewGaugeVec(prometheus.GaugeOpts{})
+	promNumNodesInvalidChainID = promauto.NewGaugeVec(prometheus.GaugeOpts{})
+	promNumNodesUnreachable    = promauto.NewGaugeVec(prometheus.GaugeOpts{})
+	promNumNodesOutOfSync      = promauto.NewGaugeVec(prometheus.GaugeOpts{})
+	promNumNodesClosed         = promauto.NewGaugeVec(prometheus.GaugeOpts{})
 )
 
 // Pool represents an abstraction over one or more primary nodes
