@@ -60,7 +60,7 @@ func (n *node) aliveLoop() {
 	}
 
 	noNewHeadsTimeoutThreshold := n.cfg.NodeNoNewHeadsThreshold()
-	pollFailureThreshold := n.cfg.NodePollFailureThreshold()
+	pollFailureThreshold := n.cfg.RPC nodePollFailureThreshold()
 	pollInterval := n.cfg.NodePollInterval()
 
 	lggr := n.log.Named("Alive").With("noNewHeadsTimeoutThreshold", noNewHeadsTimeoutThreshold, "pollInterval", pollInterval, "pollFailureThreshold", pollFailureThreshold)
@@ -120,7 +120,7 @@ func (n *node) aliveLoop() {
 					promEVMPoolRPCNodePollsFailed.WithLabelValues(n.chainID.String(), n.name).Inc()
 					pollFailures++
 				}
-				lggr.Warnw(fmt.Sprintf("Poll failure, node %s failed to respond properly", n.String()), "err", err, "pollFailures", pollFailures, "nodeState", n.State())
+				lggr.Warnw(fmt.Sprintf("Poll failure, RPC endpoint %s failed to respond properly", n.String()), "err", err, "pollFailures", pollFailures, "nodeState", n.State())
 			} else {
 				lggr.Tracew("Version poll successful", "nodeState", n.State(), "protocolVersion", version)
 				promEVMPoolRPCNodePollsSuccess.WithLabelValues(n.chainID.String(), n.name).Inc()
@@ -192,14 +192,14 @@ func (n *node) outOfSyncLoop(stuckAtBlockNumber int64) {
 	outOfSyncAt := time.Now()
 
 	lggr := n.log.Named("OutOfSync")
-	lggr.Debugw("Trying to revive out-of-sync node", "nodeState", n.State())
+	lggr.Debugw("Trying to revive out-of-sync RPC node", "nodeState", n.State())
 
 	// Need to redial since out-of-sync nodes are automatically disconnected
 	ctx, cancel := n.ctxWithDefaultTimeout()
 	err := n.dial(ctx)
 	cancel()
 	if err != nil {
-		lggr.Errorw("Failed to dial out-of-sync node", "nodeState", n.State())
+		lggr.Errorw("Failed to dial out-of-sync RPC node", "nodeState", n.State())
 		n.declareUnreachable()
 		return
 	}
@@ -209,12 +209,12 @@ func (n *node) outOfSyncLoop(stuckAtBlockNumber int64) {
 	err = n.verify(verifyCtx)
 	cancel()
 	if err != nil {
-		n.log.Errorw(fmt.Sprintf("Failed to verify out-of-sync node: %v", err), "err", err)
+		n.log.Errorw(fmt.Sprintf("Failed to verify out-of-sync RPC node: %v", err), "err", err)
 		n.declareInvalidChainID()
 		return
 	}
 
-	lggr.Tracew("Successfully subscribed to heads feed on out-of-sync node", "stuckAtBlockNumber", stuckAtBlockNumber, "nodeState", n.State())
+	lggr.Tracew("Successfully subscribed to heads feed on out-of-sync RPC node", "stuckAtBlockNumber", stuckAtBlockNumber, "nodeState", n.State())
 
 	ch := make(chan *evmtypes.Head)
 	subCtx, cancel := n.ctxWithDefaultTimeout()
@@ -222,7 +222,7 @@ func (n *node) outOfSyncLoop(stuckAtBlockNumber int64) {
 	sub, err := n.ws.rpc.EthSubscribe(subCtx, ch, "newHeads")
 	cancel()
 	if err != nil {
-		lggr.Errorw("Failed to subscribe heads on out-of-sync node", "nodeState", n.State(), "err", err)
+		lggr.Errorw("Failed to subscribe heads on out-of-sync RPC node", "nodeState", n.State(), "err", err)
 		n.declareUnreachable()
 		return
 	}
@@ -240,11 +240,11 @@ func (n *node) outOfSyncLoop(stuckAtBlockNumber int64) {
 			}
 			if head.Number > stuckAtBlockNumber {
 				// unstuck! flip back into alive loop
-				lggr.Infow(fmt.Sprintf("Received new block for node %s. Node was offline for %s", n.String(), time.Since(outOfSyncAt)), "latestReceivedBlockNumber", head.Number, "nodeState", n.State())
+				lggr.Infow(fmt.Sprintf("Received new block for RPC node %s. Node was offline for %s", n.String(), time.Since(outOfSyncAt)), "latestReceivedBlockNumber", head.Number, "nodeState", n.State())
 				n.declareInSync()
 				return
 			}
-			lggr.Tracew("Received previously seen block for node, waiting for new block before marking as live again", "stuckAtBlockNumber", stuckAtBlockNumber, "blockNumber", head.Number, "nodeState", n.State())
+			lggr.Tracew("Received previously seen block for RPC node, waiting for new block before marking as live again", "stuckAtBlockNumber", stuckAtBlockNumber, "blockNumber", head.Number, "nodeState", n.State())
 		case <-time.After(utils.WithJitter(10 * time.Second)):
 			if n.nLiveNodes != nil && n.nLiveNodes() < 1 {
 				lggr.Critical("RPC endpoint is still out of sync, but there are no other available nodes. This RPC node will be forcibly moved back into the live pool in a degraded state")
@@ -282,7 +282,7 @@ func (n *node) unreachableLoop() {
 	unreachableAt := time.Now()
 
 	lggr := n.log.Named("Unreachable")
-	lggr.Debugw("Trying to revive unreachable node", "nodeState", n.State())
+	lggr.Debugw("Trying to revive unreachable RPC node", "nodeState", n.State())
 
 	ticker := time.NewTicker(dialRetryInterval)
 	defer ticker.Stop()
@@ -292,13 +292,13 @@ func (n *node) unreachableLoop() {
 		case <-n.getCtx().Done():
 			return
 		case <-ticker.C:
-			lggr.Tracew("Trying to re-dial node", "nodeState", n.State())
+			lggr.Tracew("Trying to re-dial RPC node", "nodeState", n.State())
 
 			dialCtx, cancel := n.ctxWithDefaultTimeout()
 			err := n.dial(dialCtx)
 			cancel()
 			if err != nil {
-				lggr.Errorw(fmt.Sprintf("Failed to redial node; still unreachable: %v", err), "err", err, "nodeState", n.State())
+				lggr.Errorw(fmt.Sprintf("Failed to redial RPC node; still unreachable: %v", err), "err", err, "nodeState", n.State())
 				continue
 			}
 
@@ -308,16 +308,16 @@ func (n *node) unreachableLoop() {
 			err = n.verify(verifyCtx)
 			cancel()
 			if errors.Is(err, errInvalidChainID) {
-				lggr.Errorw("Failed to redial node; EVM Node has the wrong chain ID", "err", err)
+				lggr.Errorw("Failed to redial RPC node; remote endpoint returned the wrong chain ID", "err", err)
 				n.declareInvalidChainID()
 				return
 			} else if err != nil {
-				lggr.Errorw(fmt.Sprintf("Failed to redial node; verify failed: %v", err), "err", err)
+				lggr.Errorw(fmt.Sprintf("Failed to redial RPC node; verify failed: %v", err), "err", err)
 				n.declareUnreachable()
 				return
 			}
 
-			lggr.Infow(fmt.Sprintf("Successfully redialled and verified node %s. Node was offline for %s", n.String(), time.Since(unreachableAt)), "nodeState", n.State())
+			lggr.Infow(fmt.Sprintf("Successfully redialled and verified RPC node %s. Node was offline for %s", n.String(), time.Since(unreachableAt)), "nodeState", n.State())
 			n.declareAlive()
 			return
 		}
@@ -342,7 +342,7 @@ func (n *node) invalidChainIDLoop() {
 	invalidAt := time.Now()
 
 	lggr := n.log.Named("InvalidChainID")
-	lggr.Debugw(fmt.Sprintf("Periodically re-checking node %s with invalid chain ID", n.String()), "nodeState", n.State())
+	lggr.Debugw(fmt.Sprintf("Periodically re-checking RPC node %s with invalid chain ID", n.String()), "nodeState", n.State())
 
 	ticker := time.NewTicker(dialRetryInterval)
 	defer ticker.Stop()
@@ -356,14 +356,14 @@ func (n *node) invalidChainIDLoop() {
 			err := n.verify(verifyCtx)
 			cancel()
 			if errors.Is(err, errInvalidChainID) {
-				lggr.Errorw("Failed to verify node; EVM Node has the wrong chain ID", "err", err)
+				lggr.Errorw("Failed to verify RPC node; remote endpoint returned the wrong chain ID", "err", err)
 				continue
 			} else if err != nil {
-				lggr.Errorw(fmt.Sprintf("Unexpected error while verifying node chain ID; %v", err), "err", err)
+				lggr.Errorw(fmt.Sprintf("Unexpected error while verifying RPC node chain ID; %v", err), "err", err)
 				n.declareUnreachable()
 				return
 			}
-			lggr.Infow(fmt.Sprintf("Successfully verified node. Node was offline for %s", time.Since(invalidAt)), "nodeState", n.State())
+			lggr.Infow(fmt.Sprintf("Successfully verified RPC node. Node was offline for %s", time.Since(invalidAt)), "nodeState", n.State())
 			n.declareAlive()
 			return
 		}

@@ -88,7 +88,7 @@ func (n *node) declareAlive() {
 	if closed := n.transitionToAlive(); closed {
 		return
 	}
-	n.log.Infow("EVM Node is online", "nodeState", n.State())
+	n.log.Infow("RPC Node is online", "nodeState", n.State())
 	n.wg.Add(1)
 	go n.aliveLoop()
 }
@@ -113,7 +113,7 @@ func (n *node) declareInSync() {
 	if closed := n.transitionToInSync(); closed {
 		return
 	}
-	n.log.Infow("EVM Node is back in sync", "nodeState", n.State())
+	n.log.Infow("RPC Node is back in sync", "nodeState", n.State())
 	n.wg.Add(1)
 	go n.aliveLoop()
 }
@@ -138,7 +138,7 @@ func (n *node) declareOutOfSync(latestReceivedBlockNumber int64) {
 	if closed := n.transitionToOutOfSync(); closed {
 		return
 	}
-	n.log.Errorw("EVM Node is out of sync", "nodeState", n.State())
+	n.log.Errorw("RPC Node is out of sync", "nodeState", n.State())
 	n.wg.Add(1)
 	go n.outOfSyncLoop(latestReceivedBlockNumber)
 }
@@ -168,7 +168,7 @@ func (n *node) declareUnreachable() {
 		// Closed: exit early
 		return
 	}
-	n.log.Errorw("EVM Node is unreachable", "nodeState", n.State())
+	n.log.Errorw("RPC Node is unreachable", "nodeState", n.State())
 	n.wg.Add(1)
 	go n.unreachableLoop()
 }
@@ -198,7 +198,7 @@ func (n *node) declareInvalidChainID() {
 		// Closed: exit early
 		return
 	}
-	n.log.Errorw("EVM Node has the wrong chain ID", "nodeState", n.State())
+	n.log.Errorw("RPC Node has the wrong chain ID", "nodeState", n.State())
 	n.wg.Add(1)
 	go n.invalidChainIDLoop()
 }
