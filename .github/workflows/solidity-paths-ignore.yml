@@ -30,3 +30,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No job required" '
+  solidity:
+    name: Solidity
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No job required" '
+
