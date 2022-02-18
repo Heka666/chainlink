@@ -80,7 +80,7 @@ jobs:
       - name: Compile all contracts
         run: ./contracts/scripts/native_solc_compile_all
       - name: Verify local solc binaries
-        run: ./tools/ci/contracts/check_solc_hashes
+        run: ./tools/ci/check_solc_hashes
       - name: Run tests
         run: ./tools/ci/solidity_test_hardhat
       - name: Run prepublish NPM test
