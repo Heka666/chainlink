@@ -20,17 +20,11 @@ import (
 	"github.com/smartcontractkit/chainlink/core/utils"
 )
 
-// TODO: Prometheus metrics
 var (
-	promNumNodesAlive = promauto.NewGaugeVec(prometheus.GaugeOpts{})
-	promNumNodesDead  = promauto.NewGaugeVec(prometheus.GaugeOpts{})
-	promNumNodeTotal  = promauto.NewGaugeVec(prometheus.GaugeOpts{})
-
-	promNumNodesDialed         = promauto.NewGaugeVec(prometheus.GaugeOpts{})
-	promNumNodesInvalidChainID = promauto.NewGaugeVec(prometheus.GaugeOpts{})
-	promNumNodesUnreachable    = promauto.NewGaugeVec(prometheus.GaugeOpts{})
-	promNumNodesOutOfSync      = promauto.NewGaugeVec(prometheus.GaugeOpts{})
-	promNumNodesClosed         = promauto.NewGaugeVec(prometheus.GaugeOpts{})
+	promEVMPoolRPCNodeStates = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "evm_pool_rpc_node_states",
+		Help: "The number of RPC nodes currently in the given state for the given chain",
+	}, []string{"evmChainID", "state"})
 )
 
 // Pool represents an abstraction over one or more primary nodes
@@ -107,24 +101,29 @@ func (p *Pool) runLoop() {
 	for {
 		select {
 		case <-monitor.C:
-			// TODO: Add prometheus, more monitoring etc in here
-			var liveNodes, deadNodes int
+			var total, dead int
+			counts := make(map[NodeState]int)
 			nodeStates := make([]nodeWithState, len(p.nodes))
 			for i, n := range p.nodes {
 				state := n.State()
 				nodeStates[i] = nodeWithState{n.String(), state.String()}
-				if state == NodeStateAlive {
-					liveNodes++
-				} else {
-					deadNodes++
+				total++
+				if state != NodeStateAlive {
+					dead++
 				}
+				counts[state]++
 			}
-			total := liveNodes + deadNodes
-			p.logger.Tracew(fmt.Sprintf("Pool state: %d/%[1]d nodes live and %d/%[1]d nodes dead", liveNodes, total, deadNodes), "nodeStates", nodeStates)
-			if total == deadNodes {
+			for _, state := range allNodeStates() {
+				count := counts[state]
+				promEVMPoolRPCNodeStates.WithLabelValues(p.chainID.String(), state.String()).Set(float64(count))
+			}
+
+			live := total - dead
+			p.logger.Tracew(fmt.Sprintf("Pool state: %d/%[1]d nodes live and %d/%[1]d nodes dead", live, total, dead), "nodeStates", nodeStates)
+			if total == dead {
 				p.logger.Criticalw(fmt.Sprintf("No EVM primary nodes available: 0/%d nodes are alive", total), "nodeStates", nodeStates)
-			} else if deadNodes > 0 {
-				p.logger.Errorw(fmt.Sprintf("At least one EVM primary node is dead: %d/%d nodes are alive", liveNodes, total), "nodeStates", nodeStates)
+			} else if dead > 0 {
+				p.logger.Errorw(fmt.Sprintf("At least one EVM primary node is dead: %d/%d nodes are alive", live, total), "nodeStates", nodeStates)
 			}
 		case <-p.chStop:
 			return

@@ -8,7 +8,32 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	evmtypes "github.com/smartcontractkit/chainlink/core/chains/evm/types"
+)
+
+var (
+	promEVMPoolRPCNodeHighestSeenBlock = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "evm_pool_rpc_node_highest_seen_block",
+		Help: "The highest seen block for the given RPC node",
+	}, []string{"evmChainID", "nodeName"})
+	promEVMPoolRPCNodeNumSeenBlocks = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "evm_pool_rpc_node_num_seen_blocks",
+		Help: "The total number of new blocks seen by the given RPC node",
+	}, []string{"evmChainID", "nodeName"})
+	promEVMPoolRPCNodePolls = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "evm_pool_rpc_node_polls_total",
+		Help: "The total number of poll checks for the given RPC node",
+	}, []string{"evmChainID", "nodeName"})
+	promEVMPoolRPCNodePollsFailed = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "evm_pool_rpc_node_polls_failed",
+		Help: "The total number of failed poll checks for the given RPC node",
+	}, []string{"evmChainID", "nodeName"})
+	promEVMPoolRPCNodePollsSuccess = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "evm_pool_rpc_node_polls_success",
+		Help: "The total number of successful poll checks for the given RPC node",
+	}, []string{"evmChainID", "nodeName"})
 )
 
 // Node is a FSM
@@ -83,6 +108,7 @@ func (n *node) aliveLoop() {
 			return
 		case <-pollCh:
 			var version string
+			promEVMPoolRPCNodePolls.WithLabelValues(n.chainID.String(), n.name).Inc()
 			lggr.Tracew("Polling for version", "nodeState", n.State(), "pollFailures", pollFailures)
 			ctx, cancel := context.WithTimeout(n.getCtx(), pollInterval)
 			err := n.CallContext(ctx, &version, "eth_protocolVersion")
@@ -90,11 +116,13 @@ func (n *node) aliveLoop() {
 			if err != nil {
 				// prevent overflow
 				if pollFailures < math.MaxUint32 {
+					promEVMPoolRPCNodePollsFailed.WithLabelValues(n.chainID.String(), n.name).Inc()
 					pollFailures++
 				}
 				lggr.Warnw(fmt.Sprintf("Poll failure, node %s failed to respond properly", n.String()), "err", err, "pollFailures", pollFailures, "nodeState", n.State())
 			} else {
 				lggr.Tracew("Version poll successful", "nodeState", n.State(), "protocolVersion", version)
+				promEVMPoolRPCNodePollsSuccess.WithLabelValues(n.chainID.String(), n.name).Inc()
 				pollFailures = 0
 			}
 			if pollFailures >= pollFailureThreshold {
@@ -108,8 +136,10 @@ func (n *node) aliveLoop() {
 				n.declareUnreachable()
 				return
 			}
+			promEVMPoolRPCNodeNumSeenBlocks.WithLabelValues(n.chainID.String(), n.name).Inc()
 			lggr.Tracew("Got head", "head", bh)
 			if bh.Number > latestReceivedBlockNumber {
+				promEVMPoolRPCNodeHighestSeenBlock.WithLabelValues(n.chainID.String(), n.name).Set(float64(bh.Number))
 				lggr.Tracew("Got higher block number, resetting timer", "latestReceivedBlockNumber", latestReceivedBlockNumber, "blockNumber", bh.Number, "nodeState", n.State())
 				latestReceivedBlockNumber = bh.Number
 			} else {

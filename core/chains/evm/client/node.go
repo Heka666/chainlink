@@ -14,10 +14,52 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	uuid "github.com/satori/go.uuid"
 
 	"github.com/smartcontractkit/chainlink/core/logger"
 	"github.com/smartcontractkit/chainlink/core/utils"
+)
+
+var (
+	promEVMPoolRPCNodeDials = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "evm_pool_rpc_node_dials_total",
+		Help: "The total number of dials for the given RPC node",
+	}, []string{"evmChainID", "nodeName"})
+	promEVMPoolRPCNodeDialsFailed = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "evm_pool_rpc_node_dials_failed",
+		Help: "The total number of failed dials for the given RPC node",
+	}, []string{"evmChainID", "nodeName"})
+	promEVMPoolRPCNodeDialsSuccess = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "evm_pool_rpc_node_dials_success",
+		Help: "The total number of successful dials for the given RPC node",
+	}, []string{"evmChainID", "nodeName"})
+	promEVMPoolRPCNodeVerifies = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "evm_pool_rpc_node_verifies",
+		Help: "The total number of chain ID verifications for the given RPC node",
+	}, []string{"evmChainID", "nodeName"})
+	promEVMPoolRPCNodeVerifiesFailed = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "evm_pool_rpc_node_verifies_failed",
+		Help: "The total number of failed chain ID verifications for the given RPC node",
+	}, []string{"evmChainID", "nodeName"})
+	promEVMPoolRPCNodeVerifiesSuccess = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "evm_pool_rpc_node_verifies_success",
+		Help: "The total number of successful chain ID verifications for the given RPC node",
+	}, []string{"evmChainID", "nodeName"})
+
+	promEVMPoolRPCNodeCalls = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "evm_pool_rpc_node_calls_total",
+		Help: "The approximate total number of RPC calls for the given RPC node",
+	}, []string{"evmChainID", "nodeName"})
+	promEVMPoolRPCNodeCallsFailed = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "evm_pool_rpc_node_calls_failed",
+		Help: "The approximate total number of failed RPC calls for the given RPC node",
+	}, []string{"evmChainID", "nodeName"})
+	promEVMPoolRPCNodeCallsSuccess = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "evm_pool_rpc_node_calls_success",
+		Help: "The approximate total number of successful RPC calls for the given RPC node",
+	}, []string{"evmChainID", "nodeName"})
 )
 
 //go:generate mockery --name Node --output ../mocks/ --case=underscore
@@ -108,6 +150,12 @@ const (
 	// NodeStateClosed is after the connection has been closed and the node is at the end of its lifecycle
 	NodeStateClosed
 )
+
+// allNodeStates returns all possible states a node can be in
+// NOTE: Please update this when adding a new state above
+func allNodeStates() []NodeState {
+	return []NodeState{NodeStateUndialed, NodeStateDialed, NodeStateInvalidChainID, NodeStateAlive, NodeStateUnreachable, NodeStateOutOfSync, NodeStateClosed}
+}
 
 // Node represents one ethereum node.
 // It must have a ws url and may have a http url
@@ -208,6 +256,7 @@ func (n *node) start(startCtx context.Context) {
 // Not thread-safe
 // Pure dial: does not mutate node "state" field.
 func (n *node) dial(ctx context.Context) error {
+	promEVMPoolRPCNodeDials.WithLabelValues(n.chainID.String(), n.name).Inc()
 	var httpuri string
 	if n.http != nil {
 		httpuri = n.http.uri.String()
@@ -217,6 +266,7 @@ func (n *node) dial(ctx context.Context) error {
 	uri := n.ws.uri.String()
 	wsrpc, err := rpc.DialWebsocket(ctx, uri, "")
 	if err != nil {
+		promEVMPoolRPCNodeDialsFailed.WithLabelValues(n.chainID.String(), n.name).Inc()
 		return errors.Wrapf(err, "error while dialing websocket: %v", uri)
 	}
 
@@ -224,6 +274,7 @@ func (n *node) dial(ctx context.Context) error {
 	if n.http != nil {
 		httprpc, err = rpc.DialHTTP(httpuri)
 		if err != nil {
+			promEVMPoolRPCNodeDialsFailed.WithLabelValues(n.chainID.String(), n.name).Inc()
 			return errors.Wrapf(err, "error while dialing HTTP: %v", uri)
 		}
 	}
@@ -237,6 +288,7 @@ func (n *node) dial(ctx context.Context) error {
 	}
 
 	n.log.Debugw("RPC dial: success", "wsuri", n.ws.uri.String(), "httpuri", httpuri)
+	promEVMPoolRPCNodeDialsSuccess.WithLabelValues(n.chainID.String(), n.name).Inc()
 
 	return nil
 }
@@ -247,8 +299,13 @@ var errInvalidChainID = errors.New("invalid chain id")
 // Not thread-safe
 // Pure verify: does not mutate node "state" field.
 func (n *node) verify(ctx context.Context) (err error) {
+	promEVMPoolRPCNodeVerifies.WithLabelValues(n.chainID.String(), n.name).Inc()
 	ctx, cancel := n.wrapCtx(ctx)
 	defer cancel()
+
+	promFailed := func() {
+		promEVMPoolRPCNodeVerifiesFailed.WithLabelValues(n.chainID.String(), n.name).Inc()
+	}
 
 	if !(n.state == NodeStateDialed) {
 		panic(fmt.Sprintf("cannot verify node in state %v", n.state))
@@ -256,8 +313,10 @@ func (n *node) verify(ctx context.Context) (err error) {
 
 	var chainID *big.Int
 	if chainID, err = n.ws.geth.ChainID(ctx); err != nil {
+		promFailed()
 		return errors.Wrapf(err, "failed to verify chain ID for node %s", n.name)
 	} else if chainID.Cmp(n.chainID) != 0 {
+		promFailed()
 		return errors.Wrapf(
 			errInvalidChainID,
 			"websocket rpc ChainID doesn't match local chain ID: RPC ID=%s, local ID=%s, node name=%s",
@@ -268,8 +327,10 @@ func (n *node) verify(ctx context.Context) (err error) {
 	}
 	if n.http != nil {
 		if chainID, err = n.http.geth.ChainID(ctx); err != nil {
+			promFailed()
 			return errors.Wrapf(err, "failed to verify chain ID for node %s", n.name)
 		} else if chainID.Cmp(n.chainID) != 0 {
+			promFailed()
 			return errors.Wrapf(
 				errInvalidChainID,
 				"http rpc ChainID doesn't match local chain ID: RPC ID=%s, local ID=%s, node name=%s",
@@ -279,6 +340,8 @@ func (n *node) verify(ctx context.Context) (err error) {
 			)
 		}
 	}
+
+	promEVMPoolRPCNodeVerifiesSuccess.WithLabelValues(n.chainID.String(), n.name).Inc()
 
 	return nil
 }
@@ -483,7 +546,7 @@ func (n *node) CallContext(ctx context.Context, result interface{}, method strin
 		err = n.wrapWS(n.ws.rpc.CallContext(ctx, result, method, args...))
 	}
 
-	logResult(lggr, err)
+	n.logResult(lggr, err)
 
 	return err
 }
@@ -503,7 +566,7 @@ func (n *node) BatchCallContext(ctx context.Context, b []rpc.BatchElem) error {
 		err = n.wrapWS(n.ws.rpc.BatchCallContext(ctx, b))
 	}
 
-	logResult(lggr, err)
+	n.logResult(lggr, err)
 
 	return err
 }
@@ -519,7 +582,7 @@ func (n *node) EthSubscribe(ctx context.Context, channel interface{}, args ...in
 	lggr.Debug("RPC call: evmclient.Client#EthSubscribe")
 	sub, err := n.ws.rpc.EthSubscribe(ctx, channel, args...)
 
-	logResult(lggr, err)
+	n.logResult(lggr, err)
 
 	return sub, err
 }
@@ -544,7 +607,7 @@ func (n *node) TransactionReceipt(ctx context.Context, txHash common.Hash) (rece
 		err = n.wrapWS(err)
 	}
 
-	logResult(lggr, err, "receipt", receipt)
+	n.logResult(lggr, err, "receipt", receipt)
 
 	return
 }
@@ -566,7 +629,7 @@ func (n *node) HeaderByNumber(ctx context.Context, number *big.Int) (header *typ
 		err = n.wrapWS(err)
 	}
 
-	logResult(lggr, err, "header", header)
+	n.logResult(lggr, err, "header", header)
 
 	return
 }
@@ -586,7 +649,7 @@ func (n *node) SendTransaction(ctx context.Context, tx *types.Transaction) error
 		err = n.wrapWS(n.ws.geth.SendTransaction(ctx, tx))
 	}
 
-	logResult(lggr, err)
+	n.logResult(lggr, err)
 
 	return err
 }
@@ -608,7 +671,7 @@ func (n *node) PendingNonceAt(ctx context.Context, account common.Address) (nonc
 		err = n.wrapWS(err)
 	}
 
-	logResult(lggr, err, "nonce", nonce)
+	n.logResult(lggr, err, "nonce", nonce)
 
 	return
 }
@@ -630,7 +693,7 @@ func (n *node) NonceAt(ctx context.Context, account common.Address, blockNumber 
 		err = n.wrapWS(err)
 	}
 
-	logResult(lggr, err, "nonce", nonce)
+	n.logResult(lggr, err, "nonce", nonce)
 
 	return
 }
@@ -652,7 +715,7 @@ func (n *node) PendingCodeAt(ctx context.Context, account common.Address) (code 
 		err = n.wrapWS(err)
 	}
 
-	logResult(lggr, err, "code", code)
+	n.logResult(lggr, err, "code", code)
 
 	return
 }
@@ -674,7 +737,7 @@ func (n *node) CodeAt(ctx context.Context, account common.Address, blockNumber *
 		err = n.wrapWS(err)
 	}
 
-	logResult(lggr, err, "code", code)
+	n.logResult(lggr, err, "code", code)
 
 	return
 }
@@ -696,7 +759,7 @@ func (n *node) EstimateGas(ctx context.Context, call ethereum.CallMsg) (gas uint
 		err = n.wrapWS(err)
 	}
 
-	logResult(lggr, err, "gas", gas)
+	n.logResult(lggr, err, "gas", gas)
 
 	return
 }
@@ -718,7 +781,7 @@ func (n *node) SuggestGasPrice(ctx context.Context) (price *big.Int, err error) 
 		err = n.wrapWS(err)
 	}
 
-	logResult(lggr, err, "price", price)
+	n.logResult(lggr, err, "price", price)
 
 	return
 }
@@ -740,7 +803,7 @@ func (n *node) CallContract(ctx context.Context, msg ethereum.CallMsg, blockNumb
 		err = n.wrapWS(err)
 	}
 
-	logResult(lggr, err, "val", val)
+	n.logResult(lggr, err, "val", val)
 
 	return
 
@@ -763,7 +826,7 @@ func (n *node) BlockByNumber(ctx context.Context, number *big.Int) (b *types.Blo
 		err = n.wrapWS(err)
 	}
 
-	logResult(lggr, err, "block", b)
+	n.logResult(lggr, err, "block", b)
 
 	return
 }
@@ -785,7 +848,7 @@ func (n *node) BalanceAt(ctx context.Context, account common.Address, blockNumbe
 		err = n.wrapWS(err)
 	}
 
-	logResult(lggr, err, "balance", balance)
+	n.logResult(lggr, err, "balance", balance)
 
 	return
 }
@@ -807,7 +870,7 @@ func (n *node) FilterLogs(ctx context.Context, q ethereum.FilterQuery) (l []type
 		err = n.wrapWS(err)
 	}
 
-	logResult(lggr, err, "log", l)
+	n.logResult(lggr, err, "log", l)
 
 	return
 }
@@ -824,7 +887,7 @@ func (n *node) SubscribeFilterLogs(ctx context.Context, q ethereum.FilterQuery, 
 	sub, err = n.ws.geth.SubscribeFilterLogs(ctx, q, ch)
 	err = n.wrapWS(err)
 
-	logResult(lggr, err)
+	n.logResult(lggr, err)
 
 	return
 }
@@ -846,7 +909,7 @@ func (n *node) SuggestGasTipCap(ctx context.Context) (tipCap *big.Int, err error
 		err = n.wrapWS(err)
 	}
 
-	logResult(lggr, err, "tipCap", tipCap)
+	n.logResult(lggr, err, "tipCap", tipCap)
 
 	return
 }
@@ -868,7 +931,7 @@ func (n *node) ChainID(ctx context.Context) (chainID *big.Int, err error) {
 		err = n.wrapWS(err)
 	}
 
-	logResult(lggr, err, "chainID", chainID)
+	n.logResult(lggr, err, "chainID", chainID)
 
 	return
 }
@@ -881,10 +944,13 @@ func (n *node) newRqLggr(mode string) logger.Logger {
 	)
 }
 
-func logResult(lggr logger.Logger, err error, results ...interface{}) {
+func (n *node) logResult(lggr logger.Logger, err error, results ...interface{}) {
+	promEVMPoolRPCNodeCalls.WithLabelValues(n.chainID.String(), n.name).Inc()
 	if err == nil {
+		promEVMPoolRPCNodeCallsSuccess.WithLabelValues(n.chainID.String(), n.name).Inc()
 		lggr.Debugw("RPC call success", results...)
 	} else {
+		promEVMPoolRPCNodeCallsFailed.WithLabelValues(n.chainID.String(), n.name).Inc()
 		lggr.Debugw("RPC call failure", "err", err)
 	}
 }
