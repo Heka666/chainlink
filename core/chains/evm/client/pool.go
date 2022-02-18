@@ -65,14 +65,20 @@ func (p *Pool) Dial(ctx context.Context) error {
 			return errors.Errorf("no available nodes for chain %s", p.chainID.String())
 		}
 		for _, n := range p.nodes {
+			rawNode, ok := n.(*node)
+			if ok {
+				// This is a bit hacky but it allows the node to be aware of
+				// pool state and prevent certain state transitions that might
+				// otherwise leave no nodes available. It is better to have one
+				// node in a degraded state than no nodes at all.
+				rawNode.nLiveNodes = p.nLiveNodes
+			}
 			// node will handle its own redialing and automatic recovery
 			if err := n.Start(ctx); err != nil {
 				return err
 			}
 		}
 		for _, s := range p.sendonlys {
-			// TODO: Deal with sendonly nodes state?
-			// See: https://app.shortcut.com/chainlinklabs/story/8403/multiple-primary-geth-nodes-with-failover-load-balancer-part-2
 			err := s.Start(ctx)
 			if err != nil {
 				return err
@@ -83,6 +89,16 @@ func (p *Pool) Dial(ctx context.Context) error {
 
 		return nil
 	})
+}
+
+// nLiveNodes returns the number of currently alive nodes
+func (p *Pool) nLiveNodes() (nLiveNodes int) {
+	for _, n := range p.nodes {
+		if n.State() == NodeStateAlive {
+			nLiveNodes++
+		}
+	}
+	return
 }
 
 func (p *Pool) runLoop() {
@@ -162,12 +178,11 @@ func (p *Pool) ChainID() *big.Int {
 	return p.chainID
 }
 
-// TODO: Handle case where all nodes are out-of-sync
 func (p *Pool) getRoundRobin() Node {
 	nodes := p.liveNodes()
 	nNodes := len(nodes)
 	if nNodes == 0 {
-		// TODO: No nodes available should be logging at CRIT
+		p.logger.Critical("No live RPC nodes available")
 		return &erroringNode{errMsg: fmt.Sprintf("no live nodes available for chain %s", p.chainID.String())}
 	}
 

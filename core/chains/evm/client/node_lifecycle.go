@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	evmtypes "github.com/smartcontractkit/chainlink/core/chains/evm/types"
+	"github.com/smartcontractkit/chainlink/core/utils"
 )
 
 var (
@@ -126,9 +127,14 @@ func (n *node) aliveLoop() {
 				pollFailures = 0
 			}
 			if pollFailures >= pollFailureThreshold {
-				lggr.Errorw(fmt.Sprintf("Node failed to respond to %d consecutive polls", pollFailures), "pollFailures", pollFailures, "nodeState", n.State())
-				n.declareUnreachable()
-				return
+				lggr.Errorw(fmt.Sprintf("RPC endpoint failed to respond to %d consecutive polls", pollFailures), "pollFailures", pollFailures, "nodeState", n.State())
+				if n.nLiveNodes != nil && n.nLiveNodes() < 2 {
+					lggr.Critical("RPC endpoint failed to respond to polls; but cannot disable this connection because there are no other RPC endpoints, or all other RPC endpoints are dead. Chainlink is now operating in a degraded state and urgent action is required to resolve the issue")
+					continue
+				} else {
+					n.declareUnreachable()
+					return
+				}
 			}
 		case bh, open := <-ch:
 			if !open {
@@ -153,9 +159,15 @@ func (n *node) aliveLoop() {
 		case <-outOfSyncTC:
 			// We haven't received a head on the channel for at least the
 			// threshold amount of time, mark it broken
-			lggr.Errorw(fmt.Sprintf("Node detected out of sync; no new heads received for %s (last head received was %v)", noNewHeadsTimeoutThreshold, latestReceivedBlockNumber), "nodeState", n.State(), "latestReceivedBlockNumber", latestReceivedBlockNumber, "noNewHeadsTimeoutThreshold", noNewHeadsTimeoutThreshold)
-			n.declareOutOfSync(latestReceivedBlockNumber)
-			return
+			lggr.Errorw(fmt.Sprintf("RPC endpoint detected out of sync; no new heads received for %s (last head received was %v)", noNewHeadsTimeoutThreshold, latestReceivedBlockNumber), "nodeState", n.State(), "latestReceivedBlockNumber", latestReceivedBlockNumber, "noNewHeadsTimeoutThreshold", noNewHeadsTimeoutThreshold)
+			if n.nLiveNodes != nil && n.nLiveNodes() < 2 {
+				lggr.Critical("RPC endpoint detected out of sync; but cannot disable this connection because there are no other RPC endpoints, or all other RPC endpoints dead. Chainlink is now operating in a degraded state and urgent action is required to resolve the issue")
+				outOfSyncT.Reset(utils.WithJitter(10 * time.Second)) // we don't want to wait the full timeout to check again, we should check regularly and log noisily in this state
+				continue
+			} else {
+				n.declareOutOfSync(latestReceivedBlockNumber)
+				return
+			}
 		}
 	}
 }
@@ -192,8 +204,6 @@ func (n *node) outOfSyncLoop(stuckAtBlockNumber int64) {
 		return
 	}
 
-	n.setState(NodeStateDialed)
-
 	// Manually re-verify since out-of-sync nodes are automatically disconnected
 	verifyCtx, cancel := n.ctxWithDefaultTimeout()
 	err = n.verify(verifyCtx)
@@ -203,8 +213,6 @@ func (n *node) outOfSyncLoop(stuckAtBlockNumber int64) {
 		n.declareInvalidChainID()
 		return
 	}
-
-	n.setState(NodeStateOutOfSync)
 
 	lggr.Tracew("Successfully subscribed to heads feed on out-of-sync node", "stuckAtBlockNumber", stuckAtBlockNumber, "nodeState", n.State())
 
@@ -237,6 +245,13 @@ func (n *node) outOfSyncLoop(stuckAtBlockNumber int64) {
 				return
 			}
 			lggr.Tracew("Received previously seen block for node, waiting for new block before marking as live again", "stuckAtBlockNumber", stuckAtBlockNumber, "blockNumber", head.Number, "nodeState", n.State())
+		case <-time.After(utils.WithJitter(10 * time.Second)):
+			if n.nLiveNodes != nil && n.nLiveNodes() < 1 {
+				lggr.Critical("RPC endpoint is still out of sync, but there are no other available nodes. This RPC node will be forcibly moved back into the live pool in a degraded state")
+				n.declareInSync()
+				return
+
+			}
 		case err := <-sub.Err():
 			lggr.Errorw("Subscription was terminated", "nodeState", n.State(), "err", err)
 			n.declareUnreachable()

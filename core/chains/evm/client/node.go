@@ -123,6 +123,13 @@ type node struct {
 	cancel context.CancelFunc
 	// wg waits for subsidiary goroutines
 	wg sync.WaitGroup
+
+	// nLiveNodes is a passed in function that allows this node to
+	// query a parent object to see how many live nodes there are in total.
+	// This is done so we can prevent the last alive node in a pool from being
+	// moved to out-of-sync state. It is better to have one out-of-sync node
+	// than no nodes at all.
+	nLiveNodes func() int
 }
 
 // NodeConfig allows configuration of the node
