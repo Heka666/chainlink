@@ -1,3 +1,8 @@
+##
+# NOTE: any changes to the event triggers or the paths here should be reflected in:
+#       solidity-paths-ignore.yml
+##
+
 name: Solidity
 
 on:
