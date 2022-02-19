@@ -1,6 +1,10 @@
 ##
-# NOTE: any changes to the event triggers or the paths here should be reflected in:
-#       golangci-lint-paths-ignore.yml
+# This workflow needs to be ran because `golangci-lint` is a required check and
+# we conditionally only run the `golangci-lint` workflow when certain paths 
+# change.
+# If the workflow does not run, the required check will never pass. This is
+# GitHub's workaround:
+# https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/defining-the-mergeability-of-pull-requests/troubleshooting-required-status-checks#example
 ##
 
 name: golangci-lint
@@ -11,7 +15,11 @@ on:
       - auto
       - try
       - rollup
+    paths-ignore:
+      - '**.go'
   pull_request:
+    paths-ignore:
+      - '**.go'
 
 jobs:
   golangci:
