@@ -1,7 +1,10 @@
 name: Dependency Vulnerability Check
 
-on: push
-
+on: 
+  push:
+    paths:
+      - '**/go.mod'
+      - '**/go.sum'
 jobs:
   path-filter:
     name: Path Filter
