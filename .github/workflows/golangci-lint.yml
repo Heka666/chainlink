@@ -11,7 +11,11 @@ on:
       - auto
       - try
       - rollup
+    paths:
+      - '**.go'
   pull_request:
+    paths:
+      - '**.go'
 
 jobs:
   golangci:
