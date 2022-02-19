@@ -6,32 +6,19 @@ on:
       - auto
       - try
       - rollup
+    paths:
+      - 'operator_ui/**'
+      - yarn.lock
+      - 'tools/ci/**'
   pull_request:
+    paths:
+      - 'operator_ui/**'
+      - yarn.lock
+      - 'tools/ci/**'
 
 jobs:
-  path-filter:
-    name: Path Filter
-    runs-on: ubuntu-latest
-    outputs:
-      any-modified-files: ${{ steps.changed-files.outputs.any_modified }}
-    steps:
-      - name: Checkout the repo
-        uses: actions/checkout@v2
-      - name: Verify Changed files
-        uses: tj-actions/changed-files@4daffbaee17b34b8ae544990906277485819cc16 # v16
-        id: changed-files
-        with:
-          # If any of these file paths are modified, we want to run successive
-          # jobs in this workflow.
-          files: |
-            operator_ui/**
-            yarn.lock
-            tools/ci/**
-
   operator-ui:
     name: Operator UI Tests
-    needs: path-filter
-    if: any-modified-files == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Setup node

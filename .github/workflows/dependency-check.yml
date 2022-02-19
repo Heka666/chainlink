@@ -6,27 +6,7 @@ on:
       - '**/go.mod'
       - '**/go.sum'
 jobs:
-  path-filter:
-    name: Path Filter
-    runs-on: ubuntu-latest
-    outputs:
-      any-modified-files: ${{ steps.changed-files.outputs.any_modified }}
-    steps:
-      - name: Checkout the repo
-        uses: actions/checkout@v2
-      - name: Verify Changed files
-        uses: tj-actions/changed-files@4daffbaee17b34b8ae544990906277485819cc16 # v16
-        id: changed-files
-        with:
-          # If any of these file paths are modified, we want to run successive
-          # jobs in this workflow.
-          files: |
-            **/go.mod
-            **/go.sum
-
   Go:
-    needs: path-filter
-    if: any-modified-files == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
